@@ -63,13 +63,21 @@ INSERT INTO car_shop.countries (country_name)
 SELECT DISTINCT brand_origin 
 FROM raw_data.sales;
 
+#TODO FIX NULL id in Porsche country
 INSERT INTO car_shop.auto_brands (auto_brand, country_id)
 SELECT DISTINCT 
     SPLIT_PART(auto, ' ', 1) as brand,
     c.id
 FROM raw_data.sales rs
-LEFT JOIN car_shop.countries c ON rs.brand_origin = c.country_name;
+FULL JOIN car_shop.countries c ON rs.brand_origin = c.country_name
+WHERE SPLIT_PART(auto, ' ', 1) IS NOT NULL
+;
 
+SELECT DISTINCT 
+    SPLIT_PART(auto, ' ', 1) as brand,
+    c.id
+FROM raw_data.sales rs
+FULL JOIN car_shop.countries c ON rs.brand_origin = c.country_name;
 
 INSERT INTO car_shop.auto_models (auto_model, auto_brand_id, gasoline_consumption)
 SELECT DISTINCT 
@@ -99,3 +107,73 @@ LEFT JOIN car_shop.auto_brands ab ON SPLIT_PART(rs.auto, ' ', 1) = ab.auto_brand
 LEFT JOIN car_shop.auto_models am ON am.auto_brand_id = ab.id AND SPLIT_PART(SPLIT_PART(rs.auto, ',', 1), ' ', 2) = am.auto_model
 LEFT JOIN car_shop.persons p ON rs.person = p.person_name AND rs.phone = p.phone;
 
+SELECT
+    CAST(COUNT(*) as FLOAT) / CAST((SELECT COUNT(*) FROM car_shop.auto_models) as FLOAT) * 100 as nulls_percentage_gasoline_consumption
+FROM car_shop.auto_models
+WHERE gasoline_consumption IS NULL;
+
+SELECT 
+    ab.auto_brand as brand,
+    date_part('year', date) as year,
+    price
+FROM car_shop.sales sa 
+LEFT JOIN car_shop.auto_models am ON am.id = sa.auto_model_id
+LEFT JOIN car_shop.auto_brands AS ab ON ab.id = am.auto_brand_id
+GROUP BY brand, year, price;
+
+SELECT AVG(price) FROM car_shop.sales WHERE auto_model_id = 
+
+SELECT
+    brand as brand_name,
+    year,
+    ROUND(AVG(price), 2) as price_avg
+FROM ( SELECT 
+    ab.auto_brand as brand,
+    date_part('year', date) as year,
+    price
+FROM car_shop.sales sa 
+LEFT JOIN car_shop.auto_models am ON am.id = sa.auto_model_id
+LEFT JOIN car_shop.auto_brands AS ab ON ab.id = am.auto_brand_id
+)
+GROUP BY brand, year
+ORDER BY brand_name, year;
+
+SELECT
+    month,
+    year,
+    ROUND(AVG(price), 2) as price_avg
+FROM ( SELECT 
+    date_part('month', date) as month,
+    date_part('year', date) as year,
+    price
+FROM car_shop.sales sa 
+WHERE date_part('year', date) = 2022
+)
+GROUP BY month, year
+ORDER BY month, year;
+
+SELECT
+    p.person_name as user_name,
+    STRING_AGG(ab.auto_brand || ' ' || am.auto_model, ', ') as cars
+FROM car_shop.sales s
+JOIN car_shop.persons p ON p.id = s.person_id
+JOIN car_shop.auto_models am ON am.id = s.auto_model_id
+JOIN car_shop.auto_brands ab ON ab.id = am.auto_brand_id
+GROUP BY p.id, p.person_name
+ORDER BY p.person_name;
+
+SELECT 
+    subq.brand_origin,
+    MAX(subq.price_discount),
+    MIN(subq.price_discount)
+FROM (
+    SELECT
+        c.country_name as brand_origin,
+        price - (price * (1 - discount)) as price_discount
+    FROM
+        car_shop.sales as s
+        JOIN car_shop.auto_models am ON am.id = s.auto_model_id
+        JOIN car_shop.auto_brands ab ON ab.id = am.auto_brand_id
+        JOIN car_shop.countries c ON ab.country_id = c.id
+) as subq
+GROUP BY brand_origin;
